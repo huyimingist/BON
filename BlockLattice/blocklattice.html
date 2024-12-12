@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nano Block Lattice Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f5;
+            margin: 20px;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+        .section {
+            background-color: #ffffff;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .section h2 {
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #output {
+            white-space: pre-wrap;
+            background-color: #e8e8e8;
+            padding: 15px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: scroll;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nano Block Lattice Simulation</h1>
+
+        <!-- Initialize Network Section -->
+        <div class="section" id="initialize-network">
+            <h2>1. Initialize Network</h2>
+            <button id="init-network-btn">Initialize Network</button>
+        </div>
+
+        <!-- Register Accounts Section -->
+        <div class="section" id="register-accounts">
+            <h2>2. Register Accounts</h2>
+            <label for="account-id">Account ID:</label>
+            <input type="text" id="account-id" placeholder="Enter unique account ID">
+
+            <label for="initial-balance">Initial Balance:</label>
+            <input type="number" id="initial-balance" placeholder="Enter initial balance" min="0">
+
+            <button id="register-account-btn">Register Account</button>
+        </div>
+
+        <!-- Perform Transaction Section -->
+        <div class="section" id="perform-transaction">
+            <h2>3. Perform Transaction</h2>
+            <label for="sender-account">Sender Account:</label>
+            <select id="sender-account">
+                <option value="" disabled selected>Select sender</option>
+            </select>
+
+            <label for="recipient-account">Recipient Account:</label>
+            <select id="recipient-account">
+                <option value="" disabled selected>Select recipient</option>
+            </select>
+
+            <label for="transaction-amount">Amount:</label>
+            <input type="number" id="transaction-amount" placeholder="Enter amount" min="1">
+
+            <button id="send-transaction-btn">Send Transaction</button>
+        </div>
+
+        <!-- Display Blockchains Section -->
+        <div class="section" id="display-blockchains">
+            <h2>4. Display Blockchains</h2>
+            <button id="display-blockchains-btn">Show All Blockchains</button>
+            <div id="output"></div>
+        </div>
+    </div>
+
+    <!-- Include bl.js -->
+    <script src="bl.js"></script>
+
+    <!-- Frontend JavaScript -->
+    <script>
+        let network = null;
+
+        // Initialize Network Button
+        document.getElementById('init-network-btn').addEventListener('click', () => {
+            network = new Network();
+            logOutput('Network has been initialized.\n');
+            updateAccountSelectors();
+        });
+
+        // Register Account Button
+        document.getElementById('register-account-btn').addEventListener('click', () => {
+            if (!network) {
+                alert('Please initialize the network first.');
+                return;
+            }
+
+            const accountId = document.getElementById('account-id').value.trim();
+            const initialBalance = parseFloat(document.getElementById('initial-balance').value);
+
+            if (accountId === '' || isNaN(initialBalance)) {
+                alert('Please enter a valid Account ID and Initial Balance.');
+                return;
+            }
+
+            if (network.accounts[accountId]) {
+                alert(`Account "${accountId}" is already registered.`);
+                return;
+            }
+
+            const account = new Account(accountId, initialBalance);
+            network.registerAccount(account);
+            logOutput(`Account "${accountId}" registered with initial balance ${initialBalance}.\n`);
+            updateAccountSelectors();
+
+            // Clear input fields
+            document.getElementById('account-id').value = '';
+            document.getElementById('initial-balance').value = '';
+        });
+
+        // Send Transaction Button
+        document.getElementById('send-transaction-btn').addEventListener('click', () => {
+            if (!network) {
+                alert('Please initialize the network first.');
+                return;
+            }
+
+            const senderId = document.getElementById('sender-account').value;
+            const recipientId = document.getElementById('recipient-account').value;
+            const amount = parseFloat(document.getElementById('transaction-amount').value);
+
+            if (!senderId || !recipientId || isNaN(amount)) {
+                alert('Please select Sender, Recipient and enter a valid Amount.');
+                return;
+            }
+
+            if (senderId === recipientId) {
+                alert('Sender and Recipient cannot be the same.');
+                return;
+            }
+
+            const senderAccount = network.accounts[senderId];
+            if (!senderAccount) {
+                alert(`Sender account "${senderId}" does not exist.`);
+                return;
+            }
+
+            const sendBlock = senderAccount.createSendBlock(amount, recipientId);
+            if (sendBlock) {
+                sendBlock.senderId = senderId; // Assign sender ID for reference
+                network.broadcastSendBlock(sendBlock);
+                logOutput(`Transaction: "${senderId}" sent ${amount} to "${recipientId}".\n`);
+                document.getElementById('transaction-amount').value = '';
+            }
+        });
+
+        // Display Blockchains Button
+        document.getElementById('display-blockchains-btn').addEventListener('click', () => {
+            if (!network) {
+                alert('Please initialize the network first.');
+                return;
+            }
+
+            logOutput('--- Displaying All Blockchains ---\n');
+            Object.values(network.accounts).forEach(account => {
+                logOutput(`Blockchain of "${account.accountId}":\n`);
+                account.blocks.forEach((block, index) => {
+                    if (block.type === 'Send') {
+                        logOutput(`  ${index + 1}. SendBlock [ID: ${block.blockId}] -> To: ${block.recipient}, Amount: ${block.amount}\n`);
+                    } else if (block.type === 'Receive') {
+                        logOutput(`  ${index + 1}. ReceiveBlock [ID: ${block.blockId}] <- From: ${block.sender}, Amount: ${block.amount}\n`);
+                    }
+                });
+                logOutput('\n');
+            });
+        });
+
+        // Function to log output to the output div
+        function logOutput(message) {
+            const outputDiv = document.getElementById('output');
+            outputDiv.textContent += message;
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        // Function to update sender and recipient selectors
+        function updateAccountSelectors() {
+            const senderSelect = document.getElementById('sender-account');
+            const recipientSelect = document.getElementById('recipient-account');
+
+            // Clear existing options
+            senderSelect.innerHTML = '<option value="" disabled selected>Select sender</option>';
+            recipientSelect.innerHTML = '<option value="" disabled selected>Select recipient</option>';
+
+            Object.keys(network.accounts).forEach(accountId => {
+                const option1 = document.createElement('option');
+                option1.value = accountId;
+                option1.textContent = accountId;
+                senderSelect.appendChild(option1);
+
+                const option2 = document.createElement('option');
+                option2.value = accountId;
+                option2.textContent = accountId;
+                recipientSelect.appendChild(option2);
+            });
+        }
+
+        // Automatically update account selectors when new accounts are registered
+        // Override the registerAccount method to include UI updates
+        const originalRegisterAccount = Network.prototype.registerAccount;
+        Network.prototype.registerAccount = function(account) {
+            originalRegisterAccount.call(this, account);
+            updateAccountSelectors();
+        };
+
+        // Similarly, override broadcastSendBlock to log when a receive block is created
+        const originalBroadcastSendBlock = Network.prototype.broadcastSendBlock;
+        Network.prototype.broadcastSendBlock = function(sendBlock) {
+            originalBroadcastSendBlock.call(this, sendBlock);
+            // Optionally, you can add more UI updates here
+        };
+    </script>
+</body>
+</html>
