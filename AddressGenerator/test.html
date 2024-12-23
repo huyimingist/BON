@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <button id="generateBtn">Generate New Wallet & Address</button>
+  <p><strong>Seed Bytes:</strong> <span id="seedBytes">Not generated yet</span></p>
+  <p><strong>Seed Hex:</strong> <span id="seedHex">Not generated yet</span></p>
+
+  <script src="nacl.js"></script>
+  <script src="blake2b.js"></script>
+  <script>
+    function uint8ToHex(uintValue) {
+      let hex = '';
+      for (let i = 0; i < uintValue.length; i++) {
+        let aux = uintValue[i].toString(16).toUpperCase();
+        if (aux.length === 1) {
+          aux = '0' + aux;
+        }
+        hex += aux;
+      }
+      return hex;
+    }
+
+    // Event listener for button click
+    document.getElementById('generateBtn').addEventListener('click', () => {
+      // Generate seed bytes
+      const seedBytes = nacl.randomBytes(32);
+      const seedHex = uint8ToHex(seedBytes);
+
+      // Display the generated values
+      document.getElementById('seedBytes').textContent = JSON.stringify(Array.from(seedBytes));
+      document.getElementById('seedHex').textContent = seedHex;
+    });
+  </script>
+</body>
+</html>

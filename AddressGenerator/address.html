@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generate Nano Wallet Address from Seed</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4; }
+    .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 5px; }
+    button { padding: 10px 20px; margin-top: 10px; }
+    pre { background: #eaeaea; padding: 10px; border-radius: 3px; }
+    input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Generate Nano Wallet Address</h1>
+    <input type="text" id="seedInput" placeholder="Enter Secret Recovery Seed (Hex)">
+    <button id="generateBtn">Generate Wallet Address</button>
+
+    <h3>Wallet Address:</h3>
+    <pre id="address">...</pre>
+  </div>
+
+  <script src="nacl.js"></script>
+  <script src="blake2b.js"></script>
+  <script>
+    // Nano Base32 Alphabet
+    const NANO_ALPHABET = '13456789abcdefghijkmnopqrstuwxyz';
+    
+    // -------------------------
+    // Conversion Functions (unchanged from original)
+    // -------------------------
+
+    function uint8ToHex(uintValue) {
+      let hex = '';
+      for (let i = 0; i < uintValue.length; i++) {
+        let aux = uintValue[i].toString(16).toUpperCase();
+        if (aux.length === 1) {
+          aux = '0' + aux;
+        }
+        hex += aux;
+      }
+      return hex;
+    }
+
+    function hexToUint8(hexValue) {
+      const length = (hexValue.length / 2) | 0;
+      const uint8 = new Uint8Array(length);
+      for (let i = 0; i < length; i++) {
+        uint8[i] = parseInt(hexValue.substr(i * 2, 2), 16);
+      }
+      return uint8;
+    }
+
+    function uint4ToUint5(uintValue) {
+      const length = Math.floor(uintValue.length / 5) * 4;
+      const uint5 = new Uint8Array(length);
+      for (let i = 1; i <= length; i++) {
+        const n = i - 1;
+        const m = i % 4;
+        const z = n + ((i - m) / 4);
+        const right = uintValue[z] << m;
+        let left;
+        if (((length - i) % 4) === 0) {
+          left = uintValue[z - 1] << 4;
+        } else {
+          left = uintValue[z + 1] >> (4 - m);
+        }
+        uint5[n] = (left + right) % 32;
+      }
+      return uint5;
+    }
+
+    function uint8ToUint4(uintValue) {
+      const uint4 = new Uint8Array(uintValue.length * 2);
+      for (let i = 0; i < uintValue.length; i++) {
+        uint4[i * 2] = (uintValue[i] / 16) | 0;
+        uint4[i * 2 + 1] = uintValue[i] % 16;
+      }
+      return uint4;
+    }
+    
+    function uint5ToString(uint5) {
+      let string = '';
+      for (let i = 0; i < uint5.length; i++) {
+        string += NANO_ALPHABET[uint5[i]];
+      }
+      return string;
+    }
+
+    // -------------------------
+    // Key and Address Derivation Functions (mimicking original)
+    // -------------------------
+
+    function generateAccountSecretKeyBytes(seedBytes, accountIndex = 0) {
+      const indexBuffer = new Uint8Array(4); // Account index = 0
+      indexBuffer[3] = accountIndex; // Encode index in little-endian
+      const ctx = blake2bInit(32);
+      blake2bUpdate(ctx, seedBytes);
+      blake2bUpdate(ctx, indexBuffer);
+      const newKey = blake2bFinal(ctx);
+      return newKey;
+    }
+
+    function generateAccountKeyPair(accountSecretKeyBytes) {
+      return nacl.sign.keyPair.fromSecretKey(accountSecretKeyBytes);
+    }
+
+    function getPublicAccountID(accountPublicKeyBytes, prefix = 'nano') {
+      const accountHex = uint8ToHex(accountPublicKeyBytes);
+      const keyBytes = hexToUint8(accountHex);
+
+      // Compute checksum: blake2b(keyBytes, null, 5), reverse, convert
+      const checksumArray = blake2b(keyBytes, null, 5);
+      checksumArray.reverse();
+      const checksum = uint5ToString(uint4ToUint5(uint8ToUint4(checksumArray)));
+
+      // Convert '0' + accountHex to base32 (52 chars)
+      const account = uint5ToString(uint4ToUint5(uint8ToUint4(hexToUint8('0' + accountHex))));
+
+      return `${prefix}_${account}${checksum}`;
+    }
+
+    // -------------------------
+    // Generate Wallet Address from Seed
+    // -------------------------
+
+    async function generateWalletAddressFromSeed(seedHex) {
+      if (!seedHex || seedHex.length !== 64) {
+        throw new Error("Secret Recovery Seed must be 64 characters long (32 bytes).");
+      }
+
+      const seedBytes = hexToUint8(seedHex); // Convert hex seed to bytes
+      const privKey = generateAccountSecretKeyBytes(seedBytes, 0); // Derive private key (index 0)
+      const keyPair = generateAccountKeyPair(privKey); // Generate keypair
+      const publicKey = keyPair.publicKey; // Extract public key
+      return getPublicAccountID(publicKey); // Generate Nano address
+    }
+
+    // Event Listener
+    document.getElementById('generateBtn').addEventListener('click', async () => {
+      const seedHex = document.getElementById('seedInput').value.trim();
+      if (!seedHex) {
+        alert("Please enter a valid Secret Recovery Seed (Hex)");
+        return;
+      }
+      try {
+        const walletAddress = await generateWalletAddressFromSeed(seedHex);
+        document.getElementById('address').textContent = walletAddress;
+      } catch (error) {
+        alert(`Error generating wallet address: ${error.message}`);
+      }
+    });
+  </script>
+</body>
+</html>
